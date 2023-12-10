@@ -21,6 +21,13 @@ defmodule Bittorrent.CLI do
 end
 
 defmodule Bencode do
+  def decode(<<"ll", rest::binary>>) do
+    size = byte_size(rest) - 1
+    <<list_content::binary-size(size), "e"::binary>> = rest
+
+    [decode("l" <> list_content)]
+  end
+
   def decode(<<"l", rest::binary>>) do
     size = byte_size(rest) - 1
     <<list_content::binary-size(size), "e"::binary>> = rest
@@ -33,7 +40,6 @@ defmodule Bencode do
           "e" when chars_count == 0 ->
             possible_bencoded_integer = str_acc <> char
 
-
             if Regex.match?(~r/i-*\d+e/, possible_bencoded_integer),
               do: {decode(possible_bencoded_integer), %{ignore_next: 0, string_acc: ""}},
               else: {"", %{ignore_next: 0, string_acc: possible_bencoded_integer}}
@@ -41,8 +47,7 @@ defmodule Bencode do
           ":" ->
             chars_count = str_acc |> String.to_integer()
 
-            possible_bencoded_string =
-              String.slice(list_content, index - 1, chars_count + 2)
+            possible_bencoded_string = String.slice(list_content, index - 1, chars_count + 2)
 
             {decode(possible_bencoded_string), %{ignore_next: chars_count, string_acc: ""}}
 
