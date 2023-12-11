@@ -21,44 +21,11 @@ defmodule Bittorrent.CLI do
 end
 
 defmodule Bencode do
-  def decode(<<"ll", rest::binary>>) do
-    size = byte_size(rest) - 1
-    <<list_content::binary-size(size), "e"::binary>> = rest
-
-    [decode("l" <> list_content)]
-  end
-
   def decode(<<"l", rest::binary>>) do
-    size = byte_size(rest) - 1
-    <<list_content::binary-size(size), "e"::binary>> = rest
+    list_content_size = byte_size(rest) - 1
+    <<list_content::binary-size(list_content_size), "e"::binary>> = rest
 
-    Enum.map_reduce(
-      list_content |> String.graphemes() |> Enum.with_index(),
-      %{ignore_next: 0, string_acc: ""},
-      fn {char, index}, %{ignore_next: chars_count, string_acc: str_acc} ->
-        case char do
-          "e" when chars_count == 0 ->
-            possible_bencoded_integer = str_acc <> char
-
-            if Regex.match?(~r/i-*\d+e/, possible_bencoded_integer),
-              do: {decode(possible_bencoded_integer), %{ignore_next: 0, string_acc: ""}},
-              else: {"", %{ignore_next: 0, string_acc: possible_bencoded_integer}}
-
-          ":" ->
-            chars_count = str_acc |> String.to_integer()
-
-            possible_bencoded_string = String.slice(list_content, index - 1, chars_count + 2)
-
-            {decode(possible_bencoded_string), %{ignore_next: chars_count, string_acc: ""}}
-
-          _ ->
-            if chars_count > 0,
-              do: {"", %{ignore_next: chars_count - 1, string_acc: ""}},
-              else: {"", %{ignore_next: 0, string_acc: str_acc <> char}}
-        end
-      end
-    )
-    |> then(fn {list, _} -> list |> Enum.filter(&(&1 != "")) end)
+    do_decode(list_content, [], nil)
   end
 
   def decode(<<"i", rest::binary>>) do
@@ -81,4 +48,49 @@ defmodule Bencode do
   end
 
   def decode(_), do: "Invalid encoded value: not binary"
+
+  defp do_decode("", main_list, _), do: Enum.reverse(main_list)
+
+  defp do_decode(<<"i", _::binary>> = remaining, main_list, inner_list) do
+    [{start_index, match_len}] = Regex.run(~r/^i-*\d+e/, remaining, return: :index)
+    bencoded_integer = String.slice(remaining, start_index, match_len)
+    remaining = String.replace_leading(remaining, bencoded_integer, "")
+
+    decoded_integer = decode(bencoded_integer)
+
+    insert_item(remaining, main_list, inner_list, decoded_integer)
+  end
+
+  defp do_decode(<<"l", rest::binary>>, main_list, nil) do
+    do_decode(rest, main_list, [])
+  end
+
+  defp do_decode(<<"e", rest::binary>>, main_list, inner_list) do
+    do_decode(rest, [Enum.reverse(inner_list) | main_list], nil)
+  end
+
+  defp do_decode(remaining, main_list, inner_list) do
+    case Regex.run(~r/^(\d+):/, remaining) do
+      [_, string_length] ->
+        bencoded_string =
+          String.slice(
+            remaining,
+            0,
+            String.length(string_length) + 1 + String.to_integer(string_length)
+          )
+
+        remaining = String.replace_leading(remaining, bencoded_string, "")
+        decoded_string = decode(bencoded_string)
+        insert_item(remaining, main_list, inner_list, decoded_string)
+
+      nil ->
+        do_decode(remaining, main_list, inner_list)
+    end
+  end
+
+  defp insert_item(remaining, main_list, nil, new_item),
+    do: do_decode(remaining, [new_item | main_list], nil)
+
+  defp insert_item(remaining, main_list, inner_list, new_item),
+    do: do_decode(remaining, main_list, [new_item | inner_list])
 end
