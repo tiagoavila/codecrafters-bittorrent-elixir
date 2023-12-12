@@ -25,19 +25,22 @@ defmodule Bencode do
     dict_content_size = byte_size(rest) - 1
     <<dict_content::binary-size(dict_content_size), "e"::binary>> = rest
 
-    do_decode_dict(dict_content, %{})
+    decode_dict(dict_content, %{})
   end
 
-  defp do_decode_dict("", dict), do: dict
+  defp decode_dict("", dict), do: dict
+  # defp decode_dict(<<"e", remaining::binary>>, dict), do: {dict, remaining}
 
-  defp do_decode_dict(dict_content, dict) do
+  defp decode_dict(dict_content, dict) do
     {key, dict_content} = extract_bencoded_string_and_decode(dict_content)
     {value, dict_content} = decode_dict_value(dict_content)
 
-    do_decode_dict(dict_content, Map.put(dict, key, value))
+    decode_dict(dict_content, Map.put(dict, key, value))
   end
 
   defp extract_bencoded_string_and_decode(dict_content) do
+    IO.inspect(dict_content, label: "dict_content on extract key")
+
     case Regex.run(~r/^(\d+):/, dict_content) do
       [_, string_length] ->
         bencoded_string = extract_bencoded_string(string_length, dict_content)
@@ -57,9 +60,19 @@ defmodule Bencode do
   end
 
   defp decode_dict_value(dict_content) do
+    IO.inspect(dict_content, label: "dict_content on decode_dict_value")
+
     cond do
       Regex.match?(~r/^\d+:/, dict_content) -> extract_bencoded_string_and_decode(dict_content)
       Regex.match?(~r/^i/, dict_content) -> extract_bencoded_integer_and_decode(dict_content)
+      Regex.match?(~r/^d/, dict_content) ->
+        dict_content_size = byte_size(dict_content) - 2
+        <<"d", dict_content::binary-size(dict_content_size), "e">> = dict_content
+        {decode_dict(dict_content, %{}), ""}
+      Regex.match?(~r/^l/, dict_content) ->
+        dict_content_size = byte_size(dict_content) - 2
+        <<"l", dict_content::binary-size(dict_content_size), "e">> = dict_content
+        {do_decode(dict_content, [], nil), ""}
       true -> "Invalid dict value"
     end
   end

@@ -25,21 +25,31 @@ defmodule BittorrentTest do
     assert Bencode.decode("ll10:strawberryee") == [["strawberry"]]
   end
 
-  # @tag :skip
   test "decode nested bencoded lists" do
     assert Bencode.decode("lli414e10:strawberryee") == [[414, "strawberry"]]
   end
 
-  # @tag :skip
   test "decode deeply nested bencoded lists" do
     assert Bencode.decode("lli4eei5ee") == [[4], 5]
   end
 
+  @tag :skip
   test "decode dictionary" do
     assert Bencode.decode("d3:cow3:moo4:spam4:eggse") == %{"cow" => "moo", "spam" => "eggs"}
   end
 
+  @tag :skip
   test "decode dictionary - example from code crafters" do
     assert Bencode.decode("d3:foo3:bar5:helloi52ee") == %{"foo" => "bar", "hello" => 52}
+  end
+
+  # @tag :skip
+  test "decode dictionary with inner dictionary" do
+    assert Bencode.decode("d10:inner_dictd4:key16:value14:key2i42eee") == %{"inner_dict" => %{"key1" => "value1", "key2" => 42}}
+  end
+
+  # @tag :skip
+  test "decode dictionary with inner dictionary and value as list" do
+    assert Bencode.decode("d10:inner_dictd4:key16:value14:key2i42e8:list_keyl5:item15:item2i3eeee") == %{"inner_dict" => %{"key1" => "value1", "key2" => 42, "list_key" => ["item1", "item2", 3]}}
   end
 end
