@@ -21,6 +21,49 @@ defmodule Bittorrent.CLI do
 end
 
 defmodule Bencode do
+  def decode(<<"d", rest::binary>>) do
+    dict_content_size = byte_size(rest) - 1
+    <<dict_content::binary-size(dict_content_size), "e"::binary>> = rest
+
+    do_decode_dict(dict_content, %{})
+  end
+
+  defp do_decode_dict("", dict), do: dict
+
+  defp do_decode_dict(dict_content, dict) do
+    {key, dict_content} = extract_bencoded_string_and_decode(dict_content)
+    {value, dict_content} = decode_dict_value(dict_content)
+
+    do_decode_dict(dict_content, Map.put(dict, key, value))
+  end
+
+  defp extract_bencoded_string_and_decode(dict_content) do
+    case Regex.run(~r/^(\d+):/, dict_content) do
+      [_, string_length] ->
+        bencoded_string = extract_bencoded_string(string_length, dict_content)
+        remaining = String.replace_leading(dict_content, bencoded_string, "")
+        {decode(bencoded_string), remaining}
+
+      nil -> "Invalid dict key"
+    end
+  end
+
+  defp extract_bencoded_integer_and_decode(dict_content) do
+    [{start_index, match_len}] = Regex.run(~r/^i-*\d+e/, dict_content, return: :index)
+    bencoded_integer = String.slice(dict_content, start_index, match_len)
+    remaining = String.replace_leading(dict_content, bencoded_integer, "")
+
+    {decode(bencoded_integer), remaining}
+  end
+
+  defp decode_dict_value(dict_content) do
+    cond do
+      Regex.match?(~r/^\d+:/, dict_content) -> extract_bencoded_string_and_decode(dict_content)
+      Regex.match?(~r/^i/, dict_content) -> extract_bencoded_integer_and_decode(dict_content)
+      true -> "Invalid dict value"
+    end
+  end
+
   def decode(<<"l", rest::binary>>) do
     list_content_size = byte_size(rest) - 1
     <<list_content::binary-size(list_content_size), "e"::binary>> = rest
@@ -72,20 +115,23 @@ defmodule Bencode do
   defp do_decode(remaining, main_list, inner_list) do
     case Regex.run(~r/^(\d+):/, remaining) do
       [_, string_length] ->
-        bencoded_string =
-          String.slice(
-            remaining,
-            0,
-            String.length(string_length) + 1 + String.to_integer(string_length)
-          )
-
+        bencoded_string = extract_bencoded_string(string_length, remaining)
         remaining = String.replace_leading(remaining, bencoded_string, "")
         decoded_string = decode(bencoded_string)
         insert_item(remaining, main_list, inner_list, decoded_string)
 
       nil ->
-        do_decode(remaining, main_list, inner_list)
+        Enum.reverse(main_list)
     end
+  end
+
+  defp extract_bencoded_string(string_length, content) do
+    String.slice(
+      content,
+      0,
+      # length of the number before ':', 1 for the ':' and the length of the string
+      String.length(string_length) + 1 + String.to_integer(string_length)
+    )
   end
 
   defp insert_item(remaining, main_list, nil, new_item),

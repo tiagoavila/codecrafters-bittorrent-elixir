@@ -34,4 +34,12 @@ defmodule BittorrentTest do
   test "decode deeply nested bencoded lists" do
     assert Bencode.decode("lli4eei5ee") == [[4], 5]
   end
+
+  test "decode dictionary" do
+    assert Bencode.decode("d3:cow3:moo4:spam4:eggse") == %{"cow" => "moo", "spam" => "eggs"}
+  end
+
+  test "decode dictionary - example from code crafters" do
+    assert Bencode.decode("d3:foo3:bar5:helloi52ee") == %{"foo" => "bar", "hello" => 52}
+  end
 end
