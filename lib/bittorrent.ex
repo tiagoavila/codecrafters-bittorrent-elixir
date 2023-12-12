@@ -9,6 +9,9 @@ defmodule Bittorrent.CLI do
         decoded_str = Bencode.decode(encoded_str)
         IO.puts(Jason.encode!(decoded_str))
 
+      ["info" | [torrent_file | _]] ->
+        TorrentFile.parse(torrent_file)
+
       [command | _] ->
         IO.puts("Unknown command: #{command}")
         System.halt(1)
@@ -29,8 +32,6 @@ defmodule Bencode do
   end
 
   defp decode_dict("", dict), do: dict
-  # defp decode_dict(<<"e", remaining::binary>>, dict), do: {dict, remaining}
-
   defp decode_dict(dict_content, dict) do
     {key, dict_content} = extract_bencoded_string_and_decode(dict_content)
     {value, dict_content} = decode_dict_value(dict_content)
@@ -68,7 +69,7 @@ defmodule Bencode do
       Regex.match?(~r/^l/, dict_content) ->
         dict_content_size = byte_size(dict_content) - 2
         <<"l", dict_content::binary-size(dict_content_size), "e">> = dict_content
-        {do_decode(dict_content, [], nil), ""}
+        {decode_list(dict_content, [], nil), ""}
       true -> "Invalid dict value"
     end
   end
@@ -77,7 +78,7 @@ defmodule Bencode do
     list_content_size = byte_size(rest) - 1
     <<list_content::binary-size(list_content_size), "e"::binary>> = rest
 
-    do_decode(list_content, [], nil)
+    decode_list(list_content, [], nil)
   end
 
   def decode(<<"i", rest::binary>>) do
@@ -101,9 +102,9 @@ defmodule Bencode do
 
   def decode(_), do: "Invalid encoded value: not binary"
 
-  defp do_decode("", main_list, _), do: Enum.reverse(main_list)
+  defp decode_list("", main_list, _), do: Enum.reverse(main_list)
 
-  defp do_decode(<<"i", _::binary>> = remaining, main_list, inner_list) do
+  defp decode_list(<<"i", _::binary>> = remaining, main_list, inner_list) do
     [{start_index, match_len}] = Regex.run(~r/^i-*\d+e/, remaining, return: :index)
     bencoded_integer = String.slice(remaining, start_index, match_len)
     remaining = String.replace_leading(remaining, bencoded_integer, "")
@@ -113,15 +114,15 @@ defmodule Bencode do
     insert_item(remaining, main_list, inner_list, decoded_integer)
   end
 
-  defp do_decode(<<"l", rest::binary>>, main_list, nil) do
-    do_decode(rest, main_list, [])
+  defp decode_list(<<"l", rest::binary>>, main_list, nil) do
+    decode_list(rest, main_list, [])
   end
 
-  defp do_decode(<<"e", rest::binary>>, main_list, inner_list) do
-    do_decode(rest, [Enum.reverse(inner_list) | main_list], nil)
+  defp decode_list(<<"e", rest::binary>>, main_list, inner_list) do
+    decode_list(rest, [Enum.reverse(inner_list) | main_list], nil)
   end
 
-  defp do_decode(remaining, main_list, inner_list) do
+  defp decode_list(remaining, main_list, inner_list) do
     case Regex.run(~r/^(\d+):/, remaining) do
       [_, string_length] ->
         bencoded_string = extract_bencoded_string(string_length, remaining)
@@ -144,8 +145,19 @@ defmodule Bencode do
   end
 
   defp insert_item(remaining, main_list, nil, new_item),
-    do: do_decode(remaining, [new_item | main_list], nil)
+    do: decode_list(remaining, [new_item | main_list], nil)
 
   defp insert_item(remaining, main_list, inner_list, new_item),
-    do: do_decode(remaining, main_list, [new_item | inner_list])
+    do: decode_list(remaining, main_list, [new_item | inner_list])
+end
+
+defmodule TorrentFile do
+  def parse(file_path) do
+    decoded = File.read!(file_path)
+    |> IO.iodata_to_binary()
+    |> Bencode.decode()
+
+    IO.puts("Tracker URL: #{Map.get(decoded, "announce")}")
+    IO.puts("Length: #{get_in(decoded, ["info", "length"])}")
+  end
 end
