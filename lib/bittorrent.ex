@@ -39,8 +39,6 @@ defmodule Bencode do
   end
 
   defp extract_bencoded_string_and_decode(dict_content) do
-    IO.inspect(dict_content, label: "dict_content on extract key")
-
     case Regex.run(~r/^(\d+):/, dict_content) do
       [_, string_length] ->
         bencoded_string = extract_bencoded_string(string_length, dict_content)
@@ -60,8 +58,6 @@ defmodule Bencode do
   end
 
   defp decode_dict_value(dict_content) do
-    IO.inspect(dict_content, label: "dict_content on decode_dict_value")
-
     cond do
       Regex.match?(~r/^\d+:/, dict_content) -> extract_bencoded_string_and_decode(dict_content)
       Regex.match?(~r/^i/, dict_content) -> extract_bencoded_integer_and_decode(dict_content)
