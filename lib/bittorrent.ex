@@ -24,54 +24,35 @@ defmodule Bittorrent.CLI do
 end
 
 defmodule Bencode do
+  def encode(string) when is_binary(string) do
+    case Base.decode16(string, case: :lower) do
+      {:ok, binary} ->
+        size = Integer.floor_div(String.length(string), 2)
+        <<"#{size}:"::binary, binary::binary>>
+
+      :error ->
+        "#{byte_size(string)}:#{string}"
+    end
+  end
+
+  def encode(number) when is_integer(number), do: "i#{number}e"
+
+  def encode(list) when is_list(list) do
+    Enum.reduce(list, "", fn item, acc -> acc <> encode(item) end)
+    |> then(&"l#{&1}e")
+  end
+
+  def encode(map) when is_map(map) do
+    map
+    |> Enum.reduce("", fn {key, value}, acc -> acc <> encode(key) <> encode(value) end)
+    |> then(&"d#{&1}e")
+  end
+
   def decode(<<"d", rest::binary>>) do
     dict_content_size = byte_size(rest) - 1
     <<dict_content::binary-size(dict_content_size), "e"::binary>> = rest
 
     decode_dict(dict_content, %{})
-  end
-
-  defp decode_dict("", dict), do: dict
-  defp decode_dict(dict_content, dict) do
-    {key, dict_content} = extract_bencoded_string_and_decode(dict_content)
-    {value, dict_content} = decode_dict_value(dict_content)
-
-    decode_dict(dict_content, Map.put(dict, key, value))
-  end
-
-  defp extract_bencoded_string_and_decode(dict_content) do
-    case Regex.run(~r/^(\d+):/, dict_content) do
-      [_, string_length] ->
-        bencoded_string = extract_bencoded_string(string_length, dict_content)
-        remaining = String.replace_leading(dict_content, bencoded_string, "")
-        {decode(bencoded_string), remaining}
-
-      nil -> "Invalid dict key"
-    end
-  end
-
-  defp extract_bencoded_integer_and_decode(dict_content) do
-    [{start_index, match_len}] = Regex.run(~r/^i-*\d+e/, dict_content, return: :index)
-    bencoded_integer = String.slice(dict_content, start_index, match_len)
-    remaining = String.replace_leading(dict_content, bencoded_integer, "")
-
-    {decode(bencoded_integer), remaining}
-  end
-
-  defp decode_dict_value(dict_content) do
-    cond do
-      Regex.match?(~r/^\d+:/, dict_content) -> extract_bencoded_string_and_decode(dict_content)
-      Regex.match?(~r/^i/, dict_content) -> extract_bencoded_integer_and_decode(dict_content)
-      Regex.match?(~r/^d/, dict_content) ->
-        dict_content_size = byte_size(dict_content) - 2
-        <<"d", dict_content::binary-size(dict_content_size), "e">> = dict_content
-        {decode_dict(dict_content, %{}), ""}
-      Regex.match?(~r/^l/, dict_content) ->
-        dict_content_size = byte_size(dict_content) - 2
-        <<"l", dict_content::binary-size(dict_content_size), "e">> = dict_content
-        {decode_list(dict_content, [], nil), ""}
-      true -> "Invalid dict value"
-    end
   end
 
   def decode(<<"l", rest::binary>>) do
@@ -101,6 +82,58 @@ defmodule Bencode do
   end
 
   def decode(_), do: "Invalid encoded value: not binary"
+
+  defp decode_dict("", dict), do: dict
+
+  defp decode_dict(dict_content, dict) do
+    {key, dict_content} = extract_bencoded_string_and_decode(dict_content)
+    {value, dict_content} = decode_dict_value(dict_content)
+
+    decode_dict(dict_content, Map.put(dict, key, value))
+  end
+
+  defp extract_bencoded_string_and_decode(dict_content) do
+    case Regex.run(~r/^(\d+):/, dict_content) do
+      [_, string_length] ->
+        bencoded_string = extract_bencoded_string(string_length, dict_content)
+        remaining = String.replace_leading(dict_content, bencoded_string, "")
+        {decode(bencoded_string), remaining}
+
+      nil ->
+        "Invalid dict key"
+    end
+  end
+
+  defp extract_bencoded_integer_and_decode(dict_content) do
+    [{start_index, match_len}] = Regex.run(~r/^i-*\d+e/, dict_content, return: :index)
+    bencoded_integer = String.slice(dict_content, start_index, match_len)
+    remaining = String.replace_leading(dict_content, bencoded_integer, "")
+
+    {decode(bencoded_integer), remaining}
+  end
+
+  defp decode_dict_value(dict_content) do
+    cond do
+      Regex.match?(~r/^\d+:/, dict_content) ->
+        extract_bencoded_string_and_decode(dict_content)
+
+      Regex.match?(~r/^i/, dict_content) ->
+        extract_bencoded_integer_and_decode(dict_content)
+
+      Regex.match?(~r/^d/, dict_content) ->
+        dict_content_size = byte_size(dict_content) - 2
+        <<"d", dict_content::binary-size(dict_content_size), "e">> = dict_content
+        {decode_dict(dict_content, %{}), ""}
+
+      Regex.match?(~r/^l/, dict_content) ->
+        dict_content_size = byte_size(dict_content) - 2
+        <<"l", dict_content::binary-size(dict_content_size), "e">> = dict_content
+        {decode_list(dict_content, [], nil), ""}
+
+      true ->
+        "Invalid dict value"
+    end
+  end
 
   defp decode_list("", main_list, _), do: Enum.reverse(main_list)
 
@@ -153,11 +186,19 @@ end
 
 defmodule TorrentFile do
   def parse(file_path) do
-    decoded = File.read!(file_path)
-    |> IO.iodata_to_binary()
-    |> Bencode.decode()
+    decoded =
+      File.read!(file_path)
+      |> IO.iodata_to_binary()
+      |> Bencode.decode()
+
+    info_map_encoded = Map.get(decoded, "info") |> Bencode.encode()
+
+    info_hash =
+      :crypto.hash(:sha, <<info_map_encoded::binary>>)
+      |> Base.encode16(case: :lower)
 
     IO.puts("Tracker URL: #{Map.get(decoded, "announce")}")
     IO.puts("Length: #{get_in(decoded, ["info", "length"])}")
+    IO.puts("Info Hash: #{info_hash}")
   end
 end

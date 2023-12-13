@@ -10,9 +10,10 @@ defmodule App.MixProject do
       elixir: "~> 1.10",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
+      extra_applications: [:crypto]
     ]
   end
-  
+
   defp deps do
     [
       {:jason, "~> 1.2"},
