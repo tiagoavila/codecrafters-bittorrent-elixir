@@ -224,8 +224,15 @@ defmodule TorrentFile do
   defp get_piece_hashes_list(piece_hashes_string) do
     piece_hashes_string
     |> Base.decode16!(case: :lower)
-    |> String.graphemes()
-    |> Enum.chunk_every(@pieces_byte_size)
-    |> Enum.map(&Enum.join(&1) |> Base.encode16(case: :lower))
+    |> do_get_piece_hashes()
+  end
+
+  defp do_get_piece_hashes(pieces, result \\ [])
+  defp do_get_piece_hashes(<<>>, result), do: Enum.reverse(result)
+
+  defp do_get_piece_hashes(<<piece::binary-size(20), rest::binary>>, result) do
+    encoded_piece = piece |> Base.encode16(case: :lower)
+
+    do_get_piece_hashes(rest, [encoded_piece | result])
   end
 end
