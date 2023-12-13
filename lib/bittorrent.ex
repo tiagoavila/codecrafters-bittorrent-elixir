@@ -80,7 +80,8 @@ defmodule Bencode do
       |> :binary.list_to_bin()
 
     case String.valid?(decoded_bin) do
-      true -> decoded_bin
+      true ->
+        decoded_bin
 
       false ->
         # Non UTF-8 values are converted to Base16 so we can count how many char
@@ -195,6 +196,8 @@ defmodule Bencode do
 end
 
 defmodule TorrentFile do
+  @pieces_byte_size 20
+
   def parse(file_path) do
     decoded =
       File.read!(file_path)
@@ -210,5 +213,19 @@ defmodule TorrentFile do
     IO.puts("Tracker URL: #{Map.get(decoded, "announce")}")
     IO.puts("Length: #{get_in(decoded, ["info", "length"])}")
     IO.puts("Info Hash: #{info_hash}")
+    IO.puts("Piece Length: #{get_in(decoded, ["info", "piece length"])}")
+    IO.puts("Piece Hashes:")
+
+    get_in(decoded, ["info", "pieces"])
+    |> get_piece_hashes_list()
+    |> Enum.each(&IO.puts/1)
+  end
+
+  defp get_piece_hashes_list(piece_hashes_string) do
+    piece_hashes_string
+    |> Base.decode16!(case: :lower)
+    |> String.graphemes()
+    |> Enum.chunk_every(@pieces_byte_size)
+    |> Enum.map(&Enum.join(&1) |> Base.encode16(case: :lower))
   end
 end
