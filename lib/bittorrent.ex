@@ -76,7 +76,6 @@ defmodule Bittorrent.CLI do
     case HTTPoison.get!(request_url) do
       %HTTPoison.Response{status_code: 200, body: body} ->
         body
-        |> IO.inspect(label: "Body")
         |> Bencode.decode()
         |> Jason.encode!()
         |> Jason.decode!()
@@ -197,6 +196,8 @@ defmodule Bencode do
   defp decode_dict("", dict), do: dict
 
   defp decode_dict(dict_content, dict) do
+    List.to_string(charlist) |> IO.inspect(label: "dict_content")
+
     {key, dict_content} = extract_bencoded_string_and_decode(dict_content)
     {value, dict_content} = decode_dict_value(dict_content)
 
