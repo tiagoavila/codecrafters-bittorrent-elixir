@@ -91,6 +91,7 @@ defmodule Bittorrent.CLI do
   defp read_torrent_file_and_decode(torrent_file_path) do
     File.read!(torrent_file_path)
     |> IO.iodata_to_binary()
+    |> IO.inspect(label: "Torrent file")
     |> Bencode.decode()
     |> Jason.encode!()
     |> Jason.decode!()
