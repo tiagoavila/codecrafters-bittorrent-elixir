@@ -76,6 +76,7 @@ defmodule Bittorrent.CLI do
     case HTTPoison.get!(request_url) do
       %HTTPoison.Response{status_code: 200, body: body} ->
         body
+        |> IO.inspect(label: "Body")
         |> Bencode.decode()
         |> Jason.encode!()
         |> Jason.decode!()
