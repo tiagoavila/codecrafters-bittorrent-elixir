@@ -196,8 +196,6 @@ defmodule Bencode do
   defp decode_dict("", dict), do: dict
 
   defp decode_dict(dict_content, dict) do
-    List.to_string(dict_content) |> IO.inspect(label: "dict_content")
-
     {key, dict_content} = extract_bencoded_string_and_decode(dict_content)
     {value, dict_content} = decode_dict_value(dict_content)
 
@@ -205,6 +203,8 @@ defmodule Bencode do
   end
 
   defp extract_bencoded_string_and_decode(dict_content) do
+    IO.inspect(dict_content, label: "dict_content")
+
     case Regex.run(~r/^(\d+):/, dict_content) do
       [_, string_length] ->
         bencoded_string = extract_bencoded_string(string_length, dict_content)
