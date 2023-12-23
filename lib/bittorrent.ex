@@ -77,8 +77,6 @@ defmodule Bittorrent.CLI do
       %HTTPoison.Response{status_code: 200, body: body} ->
         body
         |> Bencode.decode()
-        |> Jason.encode!()
-        |> Jason.decode!()
         |> get_peers()
 
       %HTTPoison.Response{status_code: status_code} ->
@@ -90,10 +88,7 @@ defmodule Bittorrent.CLI do
   defp read_torrent_file_and_decode(torrent_file_path) do
     File.read!(torrent_file_path)
     |> IO.iodata_to_binary()
-    |> IO.inspect(label: "Torrent file")
     |> Bencode.decode()
-    |> Jason.encode!()
-    |> Jason.decode!()
   end
 
   defp get_info_hash(decoded_torrent_file) do
@@ -289,7 +284,7 @@ defmodule Bencode do
     rescue
       _ ->
         IO.inspect(content, label: "Error while extracting bencoded string, string_length: #{string_length}")
-        ""
+        content
     end
   end
 
