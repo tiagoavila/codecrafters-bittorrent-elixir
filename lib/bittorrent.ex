@@ -203,8 +203,6 @@ defmodule Bencode do
   end
 
   defp extract_bencoded_string_and_decode(dict_content) do
-    IO.inspect(dict_content, label: "dict_content")
-
     case Regex.run(~r/^(\d+):/, dict_content) do
       [_, string_length] ->
         bencoded_string = extract_bencoded_string(string_length, dict_content)
