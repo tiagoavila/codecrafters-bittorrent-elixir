@@ -279,12 +279,16 @@ defmodule Bencode do
   end
 
   defp extract_bencoded_string(string_length, content) do
-    String.slice(
-      content,
-      0,
-      # length of the number before ':', 1 for the ':' and the length of the string
-      String.length(string_length) + 1 + String.to_integer(string_length)
-    )
+    try do
+      String.slice(
+        content,
+        0,
+        # length of the number before ':', 1 for the ':' and the length of the string
+        String.length(string_length) + 1 + String.to_integer(string_length)
+      )
+    rescue
+      error -> IO.inspect(error, label: "Error while extracting bencoded string")
+    end
   end
 
   defp insert_item(remaining, main_list, nil, new_item),
