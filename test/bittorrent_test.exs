@@ -45,12 +45,22 @@ defmodule BittorrentTest do
 
   # @tag :skip
   test "decode dictionary with inner dictionary" do
-    assert Bencode.decode("d10:inner_dictd4:key16:value14:key2i42eee") == %{"inner_dict" => %{"key1" => "value1", "key2" => 42}}
+    assert Bencode.decode("d10:inner_dictd4:key16:value14:key2i42eee") == %{
+             "inner_dict" => %{"key1" => "value1", "key2" => 42}
+           }
   end
 
   # @tag :skip
   test "decode dictionary with inner dictionary and value as list" do
-    assert Bencode.decode("d10:inner_dictd4:key16:value14:key2i42e8:list_keyl5:item15:item2i3eeee") == %{"inner_dict" => %{"key1" => "value1", "key2" => 42, "list_key" => ["item1", "item2", 3]}}
+    assert Bencode.decode(
+             "d10:inner_dictd4:key16:value14:key2i42e8:list_keyl5:item15:item2i3eeee"
+           ) == %{
+             "inner_dict" => %{
+               "key1" => "value1",
+               "key2" => 42,
+               "list_key" => ["item1", "item2", 3]
+             }
+           }
   end
 
   test "encode string" do
@@ -87,6 +97,19 @@ defmodule BittorrentTest do
 
   @tag :skip
   test "encode dictionary - example from code crafters" do
-    assert Bencode.encode(%{"foo" => "bar", "hello" => 52}) == "d6:lengthi92063e4:name10:sample.txt12:piece lengthi32768e6:pieces60:�v�z*����kg&���-n\"u��vfVsn���R��5��z����	r'�����e"
+    assert Bencode.encode(%{"foo" => "bar", "hello" => 52}) ==
+             "d6:lengthi92063e4:name10:sample.txt12:piece lengthi32768e6:pieces60:�v�z*����kg&���-n\"u��vfVsn���R��5��z����	r'�����e"
+  end
+
+  test "discover_peers returns correct list for sample.torrent" do
+    expected_peers = [
+      "178.62.82.89:51470",
+      "165.232.33.77:51467",
+      "178.62.85.20:51489"
+    ]
+
+    result = Bittorrent.CLI.discover_peers("sample.torrent")
+
+    assert result == expected_peers
   end
 end

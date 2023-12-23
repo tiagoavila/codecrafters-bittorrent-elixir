@@ -15,7 +15,7 @@ defmodule Bittorrent.CLI do
         parse_torrent_file(torrent_file)
 
       ["peers" | [torrent_file | _]] ->
-        discover_peers(torrent_file)
+        discover_peers(torrent_file) |> Enum.each(&IO.puts/1)
 
       [command | _] ->
         IO.puts("Unknown command: #{command}")
@@ -58,8 +58,9 @@ defmodule Bittorrent.CLI do
     do_get_piece_hashes(rest, [encoded_piece | result])
   end
 
-  defp discover_peers(torrent_file_path) do
+  def discover_peers(torrent_file_path) do
     decoded_torrent_file = read_torrent_file_and_decode(torrent_file_path)
+
     url = Map.get(decoded_torrent_file, "announce")
     info_hash = decoded_torrent_file |> get_info_hash() |> URI.encode()
     peer_id = "00112233445566778899"
@@ -68,14 +69,17 @@ defmodule Bittorrent.CLI do
     downloaded = 0
     left = get_in(decoded_torrent_file, ["info", "length"])
     compact = 1
-    request_url = "#{url}?info_hash=#{info_hash}&peer_id=#{peer_id}&port=#{port}&uploaded=#{uploaded}&downloaded=#{downloaded}&left=#{left}&compact=#{compact}"
+
+    request_url =
+      "#{url}?info_hash=#{info_hash}&peer_id=#{peer_id}&port=#{port}&uploaded=#{uploaded}&downloaded=#{downloaded}&left=#{left}&compact=#{compact}"
 
     case HTTPoison.get!(request_url) do
       %HTTPoison.Response{status_code: 200, body: body} ->
         body
         |> Bencode.decode()
+        |> Jason.encode!()
+        |> Jason.decode!()
         |> get_peers()
-        |> Enum.each(&IO.puts/1)
 
       %HTTPoison.Response{status_code: status_code} ->
         IO.puts("Error: #{status_code}")
@@ -87,6 +91,8 @@ defmodule Bittorrent.CLI do
     File.read!(torrent_file_path)
     |> IO.iodata_to_binary()
     |> Bencode.decode()
+    |> Jason.encode!()
+    |> Jason.decode!()
   end
 
   defp get_info_hash(decoded_torrent_file) do
