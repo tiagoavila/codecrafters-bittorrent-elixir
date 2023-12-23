@@ -287,7 +287,9 @@ defmodule Bencode do
         String.length(string_length) + 1 + String.to_integer(string_length)
       )
     rescue
-      error -> IO.inspect(error, label: "Error while extracting bencoded string")
+      error ->
+        IO.inspect(error, label: "Error while extracting bencoded string")
+        ""
     end
   end
 
