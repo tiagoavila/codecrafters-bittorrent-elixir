@@ -196,7 +196,7 @@ defmodule Bencode do
   defp decode_dict("", dict), do: dict
 
   defp decode_dict(dict_content, dict) do
-    List.to_string(charlist) |> IO.inspect(label: "dict_content")
+    List.to_string(dict_content) |> IO.inspect(label: "dict_content")
 
     {key, dict_content} = extract_bencoded_string_and_decode(dict_content)
     {value, dict_content} = decode_dict_value(dict_content)
