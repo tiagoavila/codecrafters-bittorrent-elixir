@@ -1,4 +1,6 @@
 defmodule Bittorrent.CLI do
+  @pieces_byte_size 20
+
   def main(argv) do
     case argv do
       ["decode" | [encoded_str | _]] ->
@@ -10,7 +12,10 @@ defmodule Bittorrent.CLI do
         IO.puts(Jason.encode!(decoded_str))
 
       ["info" | [torrent_file | _]] ->
-        TorrentFile.parse(torrent_file)
+        parse_torrent_file(torrent_file)
+
+      ["peers" | [torrent_file | _]] ->
+        discover_peers(torrent_file)
 
       [command | _] ->
         IO.puts("Unknown command: #{command}")
@@ -20,6 +25,93 @@ defmodule Bittorrent.CLI do
         IO.puts("Usage: your_bittorrent.sh <command> <args>")
         System.halt(1)
     end
+  end
+
+  defp parse_torrent_file(torrent_file_path) do
+    decoded_torrent_file = torrent_file_path |> read_torrent_file_and_decode()
+
+    info_hash = decoded_torrent_file |> get_info_hash_hex_encoded()
+
+    IO.puts("Tracker URL: #{Map.get(decoded_torrent_file, "announce")}")
+    IO.puts("Length: #{get_in(decoded_torrent_file, ["info", "length"])}")
+    IO.puts("Info Hash: #{info_hash}")
+    IO.puts("Piece Length: #{get_in(decoded_torrent_file, ["info", "piece length"])}")
+    IO.puts("Piece Hashes:")
+
+    get_in(decoded_torrent_file, ["info", "pieces"])
+    |> get_piece_hashes_list()
+    |> Enum.each(&IO.puts/1)
+  end
+
+  defp get_piece_hashes_list(piece_hashes_string) do
+    piece_hashes_string
+    |> Base.decode16!(case: :lower)
+    |> do_get_piece_hashes()
+  end
+
+  defp do_get_piece_hashes(pieces, result \\ [])
+  defp do_get_piece_hashes(<<>>, result), do: Enum.reverse(result)
+
+  defp do_get_piece_hashes(<<piece::binary-size(@pieces_byte_size), rest::binary>>, result) do
+    encoded_piece = piece |> Base.encode16(case: :lower)
+
+    do_get_piece_hashes(rest, [encoded_piece | result])
+  end
+
+  defp discover_peers(torrent_file_path) do
+    decoded_torrent_file = read_torrent_file_and_decode(torrent_file_path)
+    url = Map.get(decoded_torrent_file, "announce")
+    info_hash = decoded_torrent_file |> get_info_hash() |> URI.encode()
+    peer_id = "00112233445566778899"
+    port = 6881
+    uploaded = 0
+    downloaded = 0
+    left = get_in(decoded_torrent_file, ["info", "length"])
+    compact = 1
+    request_url = "#{url}?info_hash=#{info_hash}&peer_id=#{peer_id}&port=#{port}&uploaded=#{uploaded}&downloaded=#{downloaded}&left=#{left}&compact=#{compact}"
+
+    case HTTPoison.get!(request_url) do
+      %HTTPoison.Response{status_code: 200, body: body} ->
+        body
+        |> Bencode.decode()
+        |> get_peers()
+        |> Enum.each(&IO.puts/1)
+
+      %HTTPoison.Response{status_code: status_code} ->
+        IO.puts("Error: #{status_code}")
+        System.halt(1)
+    end
+  end
+
+  defp read_torrent_file_and_decode(torrent_file_path) do
+    File.read!(torrent_file_path)
+    |> IO.iodata_to_binary()
+    |> Bencode.decode()
+  end
+
+  defp get_info_hash(decoded_torrent_file) do
+    info_map_encoded = Map.get(decoded_torrent_file, "info") |> Bencode.encode()
+
+    :crypto.hash(:sha, <<info_map_encoded::binary>>)
+  end
+
+  defp get_info_hash_hex_encoded(decoded_torrent_file) do
+    decoded_torrent_file
+    |> get_info_hash()
+    |> Base.encode16(case: :lower)
+  end
+
+  defp get_peers(%{"peers" => peers}) do
+    peers
+    |> Base.decode16!(case: :lower)
+    |> :binary.bin_to_list()
+    |> Enum.chunk_every(6)
+    |> Enum.map(fn peer_bytes ->
+      <<a, b, c, d, port::binary-size(2)>> = peer_bytes |> :binary.list_to_bin()
+      ip_value = :inet.ntoa({a, b, c, d})
+      port_value = :binary.decode_unsigned(port, :big)
+      "#{ip_value}:#{port_value}"
+    end)
   end
 end
 
@@ -193,46 +285,4 @@ defmodule Bencode do
 
   defp insert_item(remaining, main_list, inner_list, new_item),
     do: decode_list(remaining, main_list, [new_item | inner_list])
-end
-
-defmodule TorrentFile do
-  @pieces_byte_size 20
-
-  def parse(file_path) do
-    decoded =
-      File.read!(file_path)
-      |> IO.iodata_to_binary()
-      |> Bencode.decode()
-
-    info_map_encoded = Map.get(decoded, "info") |> Bencode.encode()
-
-    info_hash =
-      :crypto.hash(:sha, <<info_map_encoded::binary>>)
-      |> Base.encode16(case: :lower)
-
-    IO.puts("Tracker URL: #{Map.get(decoded, "announce")}")
-    IO.puts("Length: #{get_in(decoded, ["info", "length"])}")
-    IO.puts("Info Hash: #{info_hash}")
-    IO.puts("Piece Length: #{get_in(decoded, ["info", "piece length"])}")
-    IO.puts("Piece Hashes:")
-
-    get_in(decoded, ["info", "pieces"])
-    |> get_piece_hashes_list()
-    |> Enum.each(&IO.puts/1)
-  end
-
-  defp get_piece_hashes_list(piece_hashes_string) do
-    piece_hashes_string
-    |> Base.decode16!(case: :lower)
-    |> do_get_piece_hashes()
-  end
-
-  defp do_get_piece_hashes(pieces, result \\ [])
-  defp do_get_piece_hashes(<<>>, result), do: Enum.reverse(result)
-
-  defp do_get_piece_hashes(<<piece::binary-size(20), rest::binary>>, result) do
-    encoded_piece = piece |> Base.encode16(case: :lower)
-
-    do_get_piece_hashes(rest, [encoded_piece | result])
-  end
 end

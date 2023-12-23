@@ -17,6 +17,8 @@ defmodule App.MixProject do
   defp deps do
     [
       {:jason, "~> 1.2"},
+      {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
+      {:httpoison, "~> 1.8"}
     ]
   end
 end
